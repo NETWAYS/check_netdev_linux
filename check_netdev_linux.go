@@ -2,10 +2,13 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+
 	"github.com/NETWAYS/go-check"
 )
 
@@ -25,19 +28,34 @@ var (
 	separator = regexp.MustCompile(`\s+`)
 )
 
-func main() {
-	defer check.CatchPanic()
+type ifaceData struct {
+	//name [64]rune
+	name string
 
-	plugin := check.NewConfig()
-	plugin.Name = "check_netdev_linux"
-	plugin.Readme = readme
-	plugin.Version = "0.1"
-	plugin.Timeout = 30
+	rx_bytes uint64
+	/*
+	rx_packets uint
+	rx_errs uint
+	rx_drop uint
+	rx_fifo uint
+	rx_frame uint
+	rx_compressed uint
+	rx_multicast uint
+	*/
 
-	// Parse arguments
-	// Not needed right now
-	//plugin.ParseArguments()
+	tx_bytes uint64
+	/*
+	tx_packets uint
+	tx_errs uint
+	tx_drop uint
+	tx_fifo uint
+	tx_frame uint
+	tx_compressed uint
+	tx_multicast uint
+	*/
+}
 
+func readNetdev() ([]ifaceData, error) {
 	netdev_file, err := os.Open("/proc/net/dev")
 
 	if err != nil {
@@ -52,15 +70,17 @@ func main() {
 		lines = append(lines, scanner.Text())
 	}
 
-	result := ""
+	numberOfDevices := len(lines) - 2
+	devs := make([]ifaceData, numberOfDevices)
 
-	for _, line := range lines[2:] {
+	for idx, line := range lines[2:] {
 		// Ignore the first two lines
 		line = strings.Trim(line, " ")
 		lineParts := separator.Split(line, -1)
 
-		iface := strings.Trim(lineParts[0], ":")
-		rx_bytes := lineParts[1]
+		devs[idx].name = strings.Trim(lineParts[0], ":")
+		devs[idx].rx_bytes, err = strconv.ParseUint(lineParts[1], 10, 64)
+		//println(devs[idx].rx_bytes)
 		/*
 		rx_packets := lineParts[2]
 		rx_errs := lineParts[3]
@@ -71,7 +91,8 @@ func main() {
 		rx_multicast := lineParts[8]
 		*/
 
-		tx_bytes := lineParts[9]
+		devs[idx].tx_bytes, err = strconv.ParseUint(lineParts[9], 10, 64)
+		//println(devs[idx].tx_bytes)
 		/*
 		tx_packets := lineParts[10]
 		tx_errs := lineParts[11]
@@ -82,14 +103,42 @@ func main() {
 		tx_compressed := lineParts[16]
 		*/
 
-		result += iface + " rx:" + rx_bytes + " tx:" + tx_bytes + "|"
-		result += iface + "rx=valuec;0;0;0;" + rx_bytes + " "
-		result += iface + "tx=valuec;0;0;0;" + tx_bytes + " \n"
 		//println(idx, " ", iface, "RX: ", rx_bytes, ", TX: ", tx_bytes)
 	}
 
 	if err := scanner.Err(); err != nil {
+		return nil, err
+		//log.Fatal(err)
+	}
+
+	return devs, nil
+}
+
+func main() {
+	defer check.CatchPanic()
+
+	plugin := check.NewConfig()
+	plugin.Name = "check_netdev_linux"
+	plugin.Readme = readme
+	plugin.Version = "0.1"
+	plugin.Timeout = 30
+
+
+	devs, err := readNetdev()
+	if err != nil {
 		log.Fatal(err)
+	}
+
+	// Parse arguments
+	// Not needed right now
+	//plugin.ParseArguments()
+	result := ""
+
+	for _, device := range devs {
+		result += device.name + " rx:" + fmt.Sprint(device.rx_bytes) + " tx:" + fmt.Sprint(device.tx_bytes) + "|"
+		result += device.name + "rx=valuec;0;0;0;" + fmt.Sprint(device.rx_bytes) + " "
+		result += device.name + "tx=valuec;0;0;0;" + fmt.Sprint(device.tx_bytes) + " "
+		result += "\n"
 	}
 
 	check.Exit(0, result)
