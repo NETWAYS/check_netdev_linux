@@ -8,12 +8,16 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"errors"
 
 	"github.com/NETWAYS/go-check"
 )
 
-const readme = `Read traffic for linux network interfaces and warn on thresholds`
-
+const readme = `Read traffic for linux network interfaces and warn on thresholds
+Normal mode: Detects all network interfaces and checks the link state
+Measuring mode: Re-reads the counters after $MeasuringTime seconds to measure
+the network traffic.
+`
 /*
 type Config struct {
 	IgnoreLoopback bool
@@ -53,6 +57,35 @@ type ifaceData struct {
 	tx_compressed uint
 	tx_multicast uint
 	*/
+	operstate string
+}
+
+func getInterfaces() []string {
+	file, err := os.Open("/sys/class/net")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	devices, err := file.Readdirnames(0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return devices
+}
+
+func getInterfacState(ifaceName *string, data *ifaceData) int {
+	basePath := "/sys/class/net/" + *ifaceName
+	data.name = *ifaceName
+	var err error
+
+	operstate_file, err := os.Open(basePath + "/operstate")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+
+	return 0
 }
 
 func readNetdev() ([]ifaceData, error) {
@@ -107,11 +140,42 @@ func readNetdev() ([]ifaceData, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, err
-		//log.Fatal(err)
+		log.Fatal(err)
 	}
 
 	return devs, nil
+}
+
+func getInterfacesForCheck(configIface *string , includeInterfaces *string , excludeInterfaces *string ) ([]string, error) {
+	networkInterfaces := getInterfaces()
+	if strings.Compare(*configIface,  "") != 0 {
+		// interface set, ignore regex
+		for _, iface := range networkInterfaces {
+			if strings.Compare(iface, *configIface) == 0 {
+				return  []string{iface}, nil
+			}
+		}
+		return []string{""}, errors.New("No suitable Interface")
+	}
+
+	var result []string
+
+	for _, iface := range networkInterfaces {
+		inclmatched, err := regexp.MatchString(*includeInterfaces, iface)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if inclmatched != true { continue }
+
+		exclmatched, err := regexp.MatchString(*excludeInterfaces, iface)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if exclmatched == true { continue }
+
+		result = append(result, iface)
+	}
+	return result, nil
 }
 
 func main() {
@@ -123,6 +187,22 @@ func main() {
 	plugin.Version = "0.1"
 	plugin.Timeout = 30
 
+
+	configIface := plugin.FlagSet.StringP("interface", "I", "", "Single Interface to check (exclusive to incldRgxIntrfc and excldRgxIntrfc)")
+	includeInterfaces := plugin.FlagSet.StringP("incldRgxIntrfc", "i", "*", "Regex to select interfaces (Default: all)")
+	excludeInterfaces := plugin.FlagSet.StringP("excldRgxIntrfc", "e", "*", "Regex to ignore interfaces (Default: nothing)")
+	timeout := plugin.FlagSet.IntP("timeout", "t", 0, "time frame for measuring traffic (Default: 0 - Don't measure)")
+
+	ifaces, err := getInterfacesForCheck(configIface, includeInterfaces, excludeInterfaces)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if len(ifaces) == 0 {
+		check.Exit(3, "No devices match the expression")
+	}
+
+	
 
 	devs, err := readNetdev()
 	if err != nil {
