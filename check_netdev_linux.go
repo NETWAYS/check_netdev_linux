@@ -1,14 +1,14 @@
 package main
 
 import (
-	"bufio"
-	"fmt"
 	"log"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"errors"
+	"io/ioutil"
+	//"fmt"
 
 	"github.com/NETWAYS/go-check"
 )
@@ -28,37 +28,64 @@ type Config struct {
 }
 */
 
+
 var (
 	separator = regexp.MustCompile(`\s+`)
 )
 
+//type ifaceStats struct {
+//	rx_bytes uint64
+//	rx_errs uint64
+//	rx_drop uint64
+//	/*
+//	rx_packets uint
+//	rx_fifo uint
+//	rx_frame uint
+//	rx_compressed uint
+//	rx_multicast uint
+//	*/
+//
+//	tx_bytes uint64
+//	tx_errs uint64
+//	tx_drop uint64
+//	/*
+//	tx_packets uint
+//	tx_fifo uint
+//	tx_frame uint
+//	tx_compressed uint
+//	tx_multicast uint
+//	*/
+//}
+
 type ifaceData struct {
-	//name [64]rune
 	name string
-
-	rx_bytes uint64
-	/*
-	rx_packets uint
-	rx_errs uint
-	rx_drop uint
-	rx_fifo uint
-	rx_frame uint
-	rx_compressed uint
-	rx_multicast uint
-	*/
-
-	tx_bytes uint64
-	/*
-	tx_packets uint
-	tx_errs uint
-	tx_drop uint
-	tx_fifo uint
-	tx_frame uint
-	tx_compressed uint
-	tx_multicast uint
-	*/
 	operstate string
 }
+
+
+func getIfaceStatNames() []string {
+	return []string{
+		"rx_bytes",
+		"rx_errors",
+		"rx_dropped",
+		"tx_bytes",
+		"tx_errors",
+		"tx_dropped",
+	}
+}
+
+func getLinkStateOptions() map[string]int {
+	// https://elixir.bootlin.com/linux/latest/source/net/core/net-sysfs.c
+	return map[string]int {
+		"up" : 0,
+		"testing" : 1,
+		"lowerlayerdown" : 2,
+		"down" : 2,
+		"unknown" : 3,
+		// dormant int = ?
+		}
+}
+
 
 func getInterfaces() []string {
 	file, err := os.Open("/sys/class/net")
@@ -74,20 +101,63 @@ func getInterfaces() []string {
 	return devices
 }
 
-func getInterfacState(ifaceName *string, data *ifaceData) int {
-	basePath := "/sys/class/net/" + *ifaceName
-	data.name = *ifaceName
-	var err error
+func getInterfacesForCheck(configIface *string , includeInterfaces *string , excludeInterfaces *string ) ([]string, error) {
+	networkInterfaces := getInterfaces()
+	if strings.Compare(*configIface,  "") != 0 {
+		// interface set, ignore regex
+		for _, iface := range networkInterfaces {
+			if strings.Compare(iface, *configIface) == 0 {
+				return  []string{iface}, nil
+			}
+		}
+		return []string{""}, errors.New("No suitable Interface")
+	}
 
-	operstate_file, err := os.Open(basePath + "/operstate")
+	var result []string
+
+	//fmt.Print("includePattern: ", *includeInterfaces, "\n")
+	//fmt.Print("excludePattern: ", *excludeInterfaces, "\n")
+
+	for _, iface := range networkInterfaces {
+		//fmt.Print("Interface: ", iface, "\n")
+		inclmatched, err := regexp.MatchString(*includeInterfaces, iface)
+		//fmt.Print("InclMatch: ", inclmatched, "\n")
+		if err != nil {
+			log.Fatal(err)
+		}
+		if inclmatched != true { continue }
+
+		if *excludeInterfaces != "" {
+			exclmatched, err := regexp.MatchString(*excludeInterfaces, iface)
+			//fmt.Print("ExclMatch: ", exclmatched, "\n")
+			if err != nil {
+				log.Fatal(err)
+			}
+			if exclmatched == true { continue }
+		}
+
+		result = append(result, iface)
+	}
+	return result, nil
+}
+
+// getInterfacState receives the name of an interfaces and returns
+// an integer result code representing the state of the interface
+// @result = 0 => Interface is up
+// @result = 2 => Interface is down
+// @result = 3 => Interface is unknown or state of the interface is unknown for some reason
+func getInterfacState(ifaceName *string) string {
+	basePath := "/sys/class/net/" + *ifaceName
+
+	bytes, err := ioutil.ReadFile(basePath + "/operstate")
 	if err != nil {
 		log.Fatal(err)
 	}
-
-
-	return 0
+	state:= string(bytes)
+	return state
 }
 
+/*
 func readNetdev() ([]ifaceData, error) {
 	netdev_file, err := os.Open("/proc/net/dev")
 
@@ -114,7 +184,6 @@ func readNetdev() ([]ifaceData, error) {
 		devs[idx].name = strings.Trim(lineParts[0], ":")
 		devs[idx].rx_bytes, err = strconv.ParseUint(lineParts[1], 10, 64)
 		//println(devs[idx].rx_bytes)
-		/*
 		rx_packets := lineParts[2]
 		rx_errs := lineParts[3]
 		rx_drop := lineParts[4]
@@ -122,11 +191,9 @@ func readNetdev() ([]ifaceData, error) {
 		rx_frame := lineParts[6]
 		rx_compressed := lineParts[7]
 		rx_multicast := lineParts[8]
-		*/
 
 		devs[idx].tx_bytes, err = strconv.ParseUint(lineParts[9], 10, 64)
 		//println(devs[idx].tx_bytes)
-		/*
 		tx_packets := lineParts[10]
 		tx_errs := lineParts[11]
 		tx_drop := lineParts[12]
@@ -134,7 +201,6 @@ func readNetdev() ([]ifaceData, error) {
 		tx_colls := lineParts[14]
 		tx_carrier := lineParts[15]
 		tx_compressed := lineParts[16]
-		*/
 
 		//println(idx, " ", iface, "RX: ", rx_bytes, ", TX: ", tx_bytes)
 	}
@@ -145,37 +211,27 @@ func readNetdev() ([]ifaceData, error) {
 
 	return devs, nil
 }
+*/
 
-func getInterfacesForCheck(configIface *string , includeInterfaces *string , excludeInterfaces *string ) ([]string, error) {
-	networkInterfaces := getInterfaces()
-	if strings.Compare(*configIface,  "") != 0 {
-		// interface set, ignore regex
-		for _, iface := range networkInterfaces {
-			if strings.Compare(iface, *configIface) == 0 {
-				return  []string{iface}, nil
-			}
-		}
-		return []string{""}, errors.New("No suitable Interface")
-	}
+// Get interfaces statistics
+// @result: ifaceStats, err
+func getInfacesStatistics(ifaceName *string) (map[string]int, error) {
+	basePath := "/sys/class/net/" + *ifaceName + "/statistics"
+	results := make(map[string] int)
 
-	var result []string
-
-	for _, iface := range networkInterfaces {
-		inclmatched, err := regexp.MatchString(*includeInterfaces, iface)
+	for _, stat := range getIfaceStatNames() {
+		numberBytes, err := ioutil.ReadFile(basePath + "/" + stat)
 		if err != nil {
 			log.Fatal(err)
 		}
-		if inclmatched != true { continue }
-
-		exclmatched, err := regexp.MatchString(*excludeInterfaces, iface)
+		numberString := string(numberBytes)
+		results[stat], err = strconv.Atoi(numberString[:len(numberString)-1])
 		if err != nil {
 			log.Fatal(err)
 		}
-		if exclmatched == true { continue }
-
-		result = append(result, iface)
 	}
-	return result, nil
+
+	return results, nil
 }
 
 func main() {
@@ -189,9 +245,11 @@ func main() {
 
 
 	configIface := plugin.FlagSet.StringP("interface", "I", "", "Single Interface to check (exclusive to incldRgxIntrfc and excldRgxIntrfc)")
-	includeInterfaces := plugin.FlagSet.StringP("incldRgxIntrfc", "i", "*", "Regex to select interfaces (Default: all)")
-	excludeInterfaces := plugin.FlagSet.StringP("excldRgxIntrfc", "e", "*", "Regex to ignore interfaces (Default: nothing)")
-	timeout := plugin.FlagSet.IntP("timeout", "t", 0, "time frame for measuring traffic (Default: 0 - Don't measure)")
+	includeInterfaces := plugin.FlagSet.StringP("incldRgxIntrfc", "i", ".*", "Regex to select interfaces (Default: all)")
+	excludeInterfaces := plugin.FlagSet.StringP("excldRgxIntrfc", "e", "", "Regex to ignore interfaces (Default: nothing)")
+
+	// Parse arguments
+	plugin.ParseArguments()
 
 	ifaces, err := getInterfacesForCheck(configIface, includeInterfaces, excludeInterfaces)
 	if err != nil {
@@ -202,24 +260,41 @@ func main() {
 		check.Exit(3, "No devices match the expression")
 	}
 
-	
+	interfaceData := make ([]ifaceData, len(ifaces))
+	var result string
 
-	devs, err := readNetdev()
-	if err != nil {
-		log.Fatal(err)
+	var numberOfOfflineDevices = 0
+
+	for idx, iface := range ifaces {
+		interfaceData[idx].name = iface
+		// get state
+		operState := getInterfacState(&iface)
+		operState = operState[:len(operState)-1]
+
+		if strings.Compare(operState, "down") == 0 {
+			numberOfOfflineDevices ++
+		}
+
+		statistics, err := getInfacesStatistics(&iface)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		result += interfaceData[idx].name + " is " + operState + ". "
+		for key, value := range statistics {
+			result += key + ": " + strconv.Itoa(value)
+		}
+		if idx == (len(ifaces) - 1) {
+			result += "\n"
+		} else {
+			result += ",\n"
+		}
+
 	}
 
-	// Parse arguments
-	// Not needed right now
-	//plugin.ParseArguments()
-	result := ""
-
-	for _, device := range devs {
-		result += device.name + " rx:" + fmt.Sprint(device.rx_bytes) + " tx:" + fmt.Sprint(device.tx_bytes) + "|"
-		result += device.name + "rx=valuec;0;0;0;" + fmt.Sprint(device.rx_bytes) + " "
-		result += device.name + "tx=valuec;0;0;0;" + fmt.Sprint(device.tx_bytes) + " "
-		result += "\n"
+	if numberOfOfflineDevices > 0 {
+		result = strconv.Itoa(numberOfOfflineDevices) + " devices are down\n" + result
+		check.Exit(2, result)
 	}
-
 	check.Exit(0, result)
 }
