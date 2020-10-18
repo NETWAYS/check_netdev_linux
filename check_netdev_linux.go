@@ -101,6 +101,7 @@ func getInterfaces() []string {
 	return devices
 }
 
+
 func getInterfacesForCheck(configIface *string , includeInterfaces *string , excludeInterfaces *string ) ([]string, error) {
 	networkInterfaces := getInterfaces()
 	if strings.Compare(*configIface,  "") != 0 {
@@ -141,12 +142,12 @@ func getInterfacesForCheck(configIface *string , includeInterfaces *string , exc
 	return result, nil
 }
 
-// getInterfacState receives the name of an interfaces and returns
+// getInterfaceState receives the name of an interfaces and returns
 // an integer result code representing the state of the interface
 // @result = 0 => Interface is up
 // @result = 2 => Interface is down
 // @result = 3 => Interface is unknown or state of the interface is unknown for some reason
-func getInterfacState(ifaceName *string) string {
+func getInterfaceState(ifaceName *string) string {
 	basePath := "/sys/class/net/" + *ifaceName
 
 	bytes, err := ioutil.ReadFile(basePath + "/operstate")
@@ -265,10 +266,12 @@ func main() {
 
 	var numberOfOfflineDevices = 0
 
+	numberOfMetrics := len(getIfaceStatNames())
+
 	for idx, iface := range ifaces {
 		interfaceData[idx].name = iface
 		// get state
-		operState := getInterfacState(&iface)
+		operState := getInterfaceState(&iface)
 		operState = operState[:len(operState)-1]
 
 		if strings.Compare(operState, "down") == 0 {
