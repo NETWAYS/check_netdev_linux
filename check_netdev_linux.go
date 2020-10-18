@@ -284,8 +284,14 @@ func main() {
 		}
 
 		result += interfaceData[idx].name + " is " + operState + ". "
+
+		counter := 1
 		for key, value := range statistics {
-			result += key + ": " + strconv.Itoa(value)
+			result += key + ":" + strconv.Itoa(value)
+			if counter != numberOfMetrics {
+				result += " "
+			}
+			counter ++
 		}
 		if idx == (len(ifaces) - 1) {
 			result += "\n"
