@@ -14,10 +14,11 @@ import (
 )
 
 const readme = `Read traffic for linux network interfaces and warn on thresholds
-Normal mode: Detects all network interfaces and checks the link state
+Normal mode: Detects all network interfaces and checks the link state`
+/*
 Measuring mode: Re-reads the counters after $MeasuringTime seconds to measure
 the network traffic.
-`
+*/
 /*
 type Config struct {
 	IgnoreLoopback bool
