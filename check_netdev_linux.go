@@ -122,6 +122,7 @@ func getInterfacesForCheck(configIface *string , includeInterfaces *string , exc
 
 	for _, iface := range networkInterfaces {
 		//fmt.Print("Interface: ", iface, "\n")
+		if strings.Compare(iface, "lo") == 0 { continue }
 		inclmatched, err := regexp.MatchString(*includeInterfaces, iface)
 		//fmt.Print("InclMatch: ", inclmatched, "\n")
 		if err != nil {
