@@ -88,23 +88,26 @@ func getLinkStateOptions() map[string]int {
 }
 
 
-func getInterfaces() []string {
+func getInterfaces() ([]string, error) {
 	file, err := os.Open("/sys/class/net")
 	if err != nil {
-		log.Fatal(err)
+		return []string{}, err
 	}
 
 	devices, err := file.Readdirnames(0)
 	if err != nil {
-		log.Fatal(err)
+		return []string{}, err
 	}
 
-	return devices
+	return devices, nil
 }
 
 
 func getInterfacesForCheck(configIface *string , includeInterfaces *string , excludeInterfaces *string ) ([]string, error) {
-	networkInterfaces := getInterfaces()
+	networkInterfaces, err := getInterfaces()
+	if (err != nil) {
+		return []string{}, err
+	}
 	if strings.Compare(*configIface,  "") != 0 {
 		// interface set, ignore regex
 		for _, iface := range networkInterfaces {
@@ -126,7 +129,7 @@ func getInterfacesForCheck(configIface *string , includeInterfaces *string , exc
 		inclmatched, err := regexp.MatchString(*includeInterfaces, iface)
 		//fmt.Print("InclMatch: ", inclmatched, "\n")
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		if inclmatched != true { continue }
 
@@ -134,7 +137,7 @@ func getInterfacesForCheck(configIface *string , includeInterfaces *string , exc
 			exclmatched, err := regexp.MatchString(*excludeInterfaces, iface)
 			//fmt.Print("ExclMatch: ", exclmatched, "\n")
 			if err != nil {
-				log.Fatal(err)
+				return nil, err
 			}
 			if exclmatched == true { continue }
 		}
@@ -170,12 +173,12 @@ func getInfacesStatistics(ifaceName *string) (map[string]int, error) {
 	for _, stat := range getIfaceStatNames() {
 		numberBytes, err := ioutil.ReadFile(basePath + "/" + stat)
 		if err != nil {
-			log.Fatal(err)
+			return results, err
 		}
 		numberString := string(numberBytes)
 		results[stat], err = strconv.Atoi(numberString[:len(numberString)-1])
 		if err != nil {
-			log.Fatal(err)
+			return results, err
 		}
 	}
 
@@ -202,9 +205,10 @@ func main() {
 	// Parse arguments
 	plugin.ParseArguments()
 
+	// Get interfaces
 	ifaces, err := getInterfacesForCheck(configIface, includeInterfaces, excludeInterfaces)
 	if err != nil {
-		log.Fatal(err)
+		check.Exit(check.Unknown, err.Error())
 	}
 
 	if len(ifaces) == 0 {
@@ -220,6 +224,7 @@ func main() {
 
 	for idx, iface := range ifaces {
 		interfaceData[idx].name = iface
+
 		// get state
 		operState := getInterfaceState(&iface)
 		operState = operState[:len(operState)-1]
@@ -228,9 +233,10 @@ func main() {
 			numberOfOfflineDevices ++
 		}
 
+		// get numbers
 		statistics, err := getInfacesStatistics(&iface)
 		if err != nil {
-			log.Fatal(err)
+			check.Exit(check.Unknown, err.Error())
 		}
 
 		result += interfaceData[idx].name + " is " + operState + ". "
