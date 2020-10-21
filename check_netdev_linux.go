@@ -160,61 +160,6 @@ func getInterfaceState(ifaceName *string) string {
 	return state
 }
 
-/*
-func readNetdev() ([]ifaceData, error) {
-	netdev_file, err := os.Open("/proc/net/dev")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	scanner := bufio.NewScanner(netdev_file)
-
-	lines := []string {}
-
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-
-	numberOfDevices := len(lines) - 2
-	devs := make([]ifaceData, numberOfDevices)
-
-	for idx, line := range lines[2:] {
-		// Ignore the first two lines
-		line = strings.Trim(line, " ")
-		lineParts := separator.Split(line, -1)
-
-		devs[idx].name = strings.Trim(lineParts[0], ":")
-		devs[idx].rx_bytes, err = strconv.ParseUint(lineParts[1], 10, 64)
-		//println(devs[idx].rx_bytes)
-		rx_packets := lineParts[2]
-		rx_errs := lineParts[3]
-		rx_drop := lineParts[4]
-		rx_fifo := lineParts[5]
-		rx_frame := lineParts[6]
-		rx_compressed := lineParts[7]
-		rx_multicast := lineParts[8]
-
-		devs[idx].tx_bytes, err = strconv.ParseUint(lineParts[9], 10, 64)
-		//println(devs[idx].tx_bytes)
-		tx_packets := lineParts[10]
-		tx_errs := lineParts[11]
-		tx_drop := lineParts[12]
-		tx_fifo := lineParts[13]
-		tx_colls := lineParts[14]
-		tx_carrier := lineParts[15]
-		tx_compressed := lineParts[16]
-
-		//println(idx, " ", iface, "RX: ", rx_bytes, ", TX: ", tx_bytes)
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-	return devs, nil
-}
-*/
 
 // Get interfaces statistics
 // @result: ifaceStats, err
