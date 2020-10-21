@@ -182,6 +182,7 @@ func getInfacesStatistics(ifaceName *string) (map[string]int, error) {
 	return results, nil
 }
 
+
 func main() {
 	defer check.CatchPanic()
 
@@ -195,6 +196,8 @@ func main() {
 	configIface := plugin.FlagSet.StringP("interface", "I", "", "Single Interface to check (exclusive to incldRgxIntrfc and excldRgxIntrfc)")
 	includeInterfaces := plugin.FlagSet.StringP("incldRgxIntrfc", "i", ".*", "Regex to select interfaces (Default: all)")
 	excludeInterfaces := plugin.FlagSet.StringP("excldRgxIntrfc", "e", "", "Regex to ignore interfaces (Default: nothing)")
+	checkOfflineDevices := plugin.FlagSet.BoolP("checkOffline", "c", false, "Check whether interfaces are online")
+
 
 	// Parse arguments
 	plugin.ParseArguments()
@@ -248,7 +251,7 @@ func main() {
 
 	}
 
-	if numberOfOfflineDevices > 0 {
+	if (numberOfOfflineDevices > 0 && *checkOfflineDevices) {
 		result = strconv.Itoa(numberOfOfflineDevices) + " devices are down\n" + result
 		check.Exit(2, result)
 	}
