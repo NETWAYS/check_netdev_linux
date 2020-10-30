@@ -1,13 +1,10 @@
 package main
 
 import (
-	"log"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
-	"errors"
-	"io/ioutil"
+	"github.com/check_netdev_linux/linux_net"
 	//"fmt"
 
 	"github.com/NETWAYS/go-check"
@@ -34,157 +31,6 @@ var (
 	separator = regexp.MustCompile(`\s+`)
 )
 
-//type ifaceStats struct {
-//	rx_bytes uint64
-//	rx_errs uint64
-//	rx_drop uint64
-//	/*
-//	rx_packets uint
-//	rx_fifo uint
-//	rx_frame uint
-//	rx_compressed uint
-//	rx_multicast uint
-//	*/
-//
-//	tx_bytes uint64
-//	tx_errs uint64
-//	tx_drop uint64
-//	/*
-//	tx_packets uint
-//	tx_fifo uint
-//	tx_frame uint
-//	tx_compressed uint
-//	tx_multicast uint
-//	*/
-//}
-
-type ifaceData struct {
-	name string
-	operstate string
-}
-
-
-func getIfaceStatNames() []string {
-	return []string{
-		"rx_bytes",
-		"rx_errors",
-		"rx_dropped",
-		"tx_bytes",
-		"tx_errors",
-		"tx_dropped",
-	}
-}
-
-func getLinkStateOptions() map[string]int {
-	// https://elixir.bootlin.com/linux/latest/source/net/core/net-sysfs.c
-	return map[string]int {
-		"up" : 0,
-		"testing" : 1,
-		"lowerlayerdown" : 2,
-		"down" : 2,
-		"unknown" : 3,
-		// dormant int = ?
-		}
-}
-
-
-func getInterfaces() ([]string, error) {
-	file, err := os.Open("/sys/class/net")
-	if err != nil {
-		return []string{}, err
-	}
-
-	devices, err := file.Readdirnames(0)
-	if err != nil {
-		return []string{}, err
-	}
-
-	return devices, nil
-}
-
-
-func getInterfacesForCheck(configIface *string , includeInterfaces *string , excludeInterfaces *string ) ([]string, error) {
-	networkInterfaces, err := getInterfaces()
-	if (err != nil) {
-		return []string{}, err
-	}
-	if strings.Compare(*configIface,  "") != 0 {
-		// interface set, ignore regex
-		for _, iface := range networkInterfaces {
-			if strings.Compare(iface, *configIface) == 0 {
-				return  []string{iface}, nil
-			}
-		}
-		return []string{""}, errors.New("No suitable Interface")
-	}
-
-	var result []string
-
-	//fmt.Print("includePattern: ", *includeInterfaces, "\n")
-	//fmt.Print("excludePattern: ", *excludeInterfaces, "\n")
-
-	for _, iface := range networkInterfaces {
-		//fmt.Print("Interface: ", iface, "\n")
-		if strings.Compare(iface, "lo") == 0 { continue }
-		inclmatched, err := regexp.MatchString(*includeInterfaces, iface)
-		//fmt.Print("InclMatch: ", inclmatched, "\n")
-		if err != nil {
-			return nil, err
-		}
-		if inclmatched != true { continue }
-
-		if *excludeInterfaces != "" {
-			exclmatched, err := regexp.MatchString(*excludeInterfaces, iface)
-			//fmt.Print("ExclMatch: ", exclmatched, "\n")
-			if err != nil {
-				return nil, err
-			}
-			if exclmatched == true { continue }
-		}
-
-		result = append(result, iface)
-	}
-	return result, nil
-}
-
-// getInterfaceState receives the name of an interfaces and returns
-// an integer result code representing the state of the interface
-// @result = 0 => Interface is up
-// @result = 2 => Interface is down
-// @result = 3 => Interface is unknown or state of the interface is unknown for some reason
-func getInterfaceState(ifaceName *string) string {
-	basePath := "/sys/class/net/" + *ifaceName
-
-	bytes, err := ioutil.ReadFile(basePath + "/operstate")
-	if err != nil {
-		log.Fatal(err)
-	}
-	state:= string(bytes)
-	return state
-}
-
-
-// Get interfaces statistics
-// @result: ifaceStats, err
-func getInfacesStatistics(ifaceName *string) (map[string]int, error) {
-	basePath := "/sys/class/net/" + *ifaceName + "/statistics"
-	results := make(map[string] int)
-
-	for _, stat := range getIfaceStatNames() {
-		numberBytes, err := ioutil.ReadFile(basePath + "/" + stat)
-		if err != nil {
-			return results, err
-		}
-		numberString := string(numberBytes)
-		results[stat], err = strconv.Atoi(numberString[:len(numberString)-1])
-		if err != nil {
-			return results, err
-		}
-	}
-
-	return results, nil
-}
-
 
 func main() {
 	defer check.CatchPanic()
@@ -201,32 +47,32 @@ func main() {
 	excludeInterfaces := plugin.FlagSet.StringP("excldRgxIntrfc", "e", "", "Regex to ignore interfaces (Default: nothing)")
 	checkOfflineDevices := plugin.FlagSet.BoolP("checkOffline", "c", false, "Check whether interfaces are online")
 
-
 	// Parse arguments
 	plugin.ParseArguments()
 
+	// Do the real work
 	// Get interfaces
-	ifaces, err := getInterfacesForCheck(configIface, includeInterfaces, excludeInterfaces)
+	ifaces, err := linux_net.getInterfacesForCheck(configIface, includeInterfaces, excludeInterfaces)
 	if err != nil {
-		check.Exit(check.Unknown, err.Error())
+		check.ExitError(err)
 	}
 
 	if len(ifaces) == 0 {
 		check.Exit(3, "No devices match the expression")
 	}
 
-	interfaceData := make ([]ifaceData, len(ifaces))
+	interfaceData := make ([]linux_net.ifaceData, len(ifaces))
 	var result string
 
 	var numberOfOfflineDevices = 0
 
-	numberOfMetrics := len(getIfaceStatNames())
+	numberOfMetrics := len(linux_net.getIfaceStatNames())
 
 	for idx, iface := range ifaces {
 		interfaceData[idx].name = iface
 
 		// get state
-		operState := getInterfaceState(&iface)
+		operState := linux_net.getInterfaceState(&iface)
 		operState = operState[:len(operState)-1]
 
 		if strings.Compare(operState, "down") == 0 {
@@ -234,9 +80,9 @@ func main() {
 		}
 
 		// get numbers
-		statistics, err := getInfacesStatistics(&iface)
+		statistics, err := linux_net.getInfacesStatistics(&iface)
 		if err != nil {
-			check.Exit(check.Unknown, err.Error())
+			check.ExitError(err)
 		}
 
 		result += interfaceData[idx].name + " is " + operState + ". "
