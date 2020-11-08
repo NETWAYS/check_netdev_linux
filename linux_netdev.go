@@ -1,4 +1,4 @@
-package linux_net
+package main
 
 import (
 	"os"
@@ -9,11 +9,24 @@ import (
 	"strconv"
 )
 
-type ifaceMetrics struct {
-	rx_bytes uint64
-	rx_errs uint64
-	rx_drop uint64
-	rx_packets uint
+// types and constants
+const (
+	Up = 0
+	Testing = 1
+	Lowerlayerdown = 2
+	Down = 3
+	Unknown = 4
+	// dormant = 5
+)
+
+type interfaceState int
+
+// Constants and the string array MUST be kept in sync!
+const (
+	rx_bytes  int = iota
+	rx_errs
+	rx_drop
+	rx_packets
 	/*
 	rx_fifo uint
 	rx_frame uint
@@ -21,23 +34,18 @@ type ifaceMetrics struct {
 	rx_multicast uint
 	*/
 
-	tx_bytes uint64
-	tx_errs uint64
-	tx_drop uint64
-	tx_packets uint
+	tx_bytes
+	tx_errs
+	tx_drop
+	tx_packets
 	/*
 	tx_fifo uint
 	tx_frame uint
 	tx_compressed uint
 	tx_multicast uint
 	*/
-}
-
-type ifaceData struct {
-	name string
-	operstate string
-	metrics ifaceMetrics
-}
+	metricLength
+)
 
 func getIfaceStatNames() []string {
 	return []string{
@@ -45,39 +53,35 @@ func getIfaceStatNames() []string {
 		"rx_errors",
 		"rx_dropped",
 		"rx_packets",
+		/*
+		"rx_fifo",
+		"rx_frame"
+		"rx_compressed"
+		"rx_multicast"
+		*/
+
 		"tx_bytes",
 		"tx_errors",
 		"tx_dropped",
 		"tx_packets",
+		/*
+		"tx_fifo",
+		"tx_frame",
+		"tx_compressed",
+		"tx_multicast",
+		*/
 	}
 }
 
-func ifaceMetricMaps() map[string]uint64 {
-	return map[string]uint64{
-		"rx_bytes"		: 0,
-		"rx_errors"		: 0,
-		"rx_dropped"	: 0,
-		"rx_packets"	: 0,
-		"tx_bytes"		: 0,
-		"tx_errors"		: 0,
-		"tx_dropped"	: 0,
-		"tx_packets"	: 0,
-	}
+type statistics [metricLength]uint64
+
+type ifaceData struct {
+	name string
+	operstate uint
+	metrics statistics
 }
 
-func getLinkStateOptions() map[string]int {
-	// https://elixir.bootlin.com/linux/latest/source/net/core/net-sysfs.c
-	return map[string]int {
-		"up" : 0,
-		"testing" : 1,
-		"lowerlayerdown" : 2,
-		"down" : 2,
-		"unknown" : 3,
-		// dormant int = ?
-		}
-}
-
-
+// funcs
 func getInterfaces() ([]string, error) {
 	file, err := os.Open("/sys/class/net")
 	if err != nil {
@@ -91,7 +95,6 @@ func getInterfaces() ([]string, error) {
 
 	return devices, nil
 }
-
 
 func getInterfacesForCheck(configIface *string , includeInterfaces *string , excludeInterfaces *string ) ([]string, error) {
 	networkInterfaces, err := getInterfaces()
@@ -142,35 +145,62 @@ func getInterfacesForCheck(configIface *string , includeInterfaces *string , exc
 // @result = 0 => Interface is up
 // @result = 2 => Interface is down
 // @result = 3 => Interface is unknown or state of the interface is unknown for some reason
-func getInterfaceState(ifaceName *string) (string, error) {
-	basePath := "/sys/class/net/" + *ifaceName
+func getInterfaceState(data *ifaceData) error {
+	basePath := "/sys/class/net/" + *&data.name
 
 	bytes, err := ioutil.ReadFile(basePath + "/operstate")
 	if err != nil {
-		return "", err
+		return err
 	}
-	state:= string(bytes)
-	return state, nil
+	//state:= string(bytes)
+	//return state, nil
+	switch string(bytes) {
+		case "up": {
+			data.operstate = Up
+			return nil
+		}
+		case "testing": {
+			data.operstate = Testing
+			return nil
+		}
+		case "down": {
+			data.operstate = Down
+			return nil
+		}
+		case "lowerlayerdown": {
+			data.operstate = Lowerlayerdown
+			return nil
+		}
+		default: {
+			data.operstate = Unknown
+			return nil
+		}
+	}
 }
-
 
 // Get interfaces statistics
 // @result: ifaceStats, err
-func getInfacesStatistics(ifaceName *string) (map[string]int, error) {
-	basePath := "/sys/class/net/" + *ifaceName + "/statistics"
-	results := make(map[string] int)
+func getInfacesStatistics(data *ifaceData, metricArea *statistics) (error) {
+	basePath := "/sys/class/net/" + *&data.name + "/statistics"
 
-	for _, stat := range getIfaceStatNames() {
+	var val uint64
+
+	for idx, stat := range getIfaceStatNames() {
 		numberBytes, err := ioutil.ReadFile(basePath + "/" + stat)
 		if err != nil {
-			return results, err
+			return err
 		}
 		numberString := string(numberBytes)
-		results[stat], err = strconv.Atoi(numberString[:len(numberString)-1])
+		val, err = strconv.ParseUint(numberString[:len(numberString)-1], 10, 64)
 		if err != nil {
-			return results, err
+			return err
+		}
+		if metricArea == nil {
+			data.metrics[idx] = val
+		} else {
+			metricArea[idx] = val
 		}
 	}
 
-	return results, nil
+	return nil
 }

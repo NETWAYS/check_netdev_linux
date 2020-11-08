@@ -3,11 +3,12 @@ package main
 import (
 	"regexp"
 	"strconv"
-	"strings"
-	"github.com/check_netdev_linux/linux_net"
+	//"strings"
 	//"fmt"
+	"time"
 
 	"github.com/NETWAYS/go-check"
+	"github.com/NETWAYS/go-check/result"
 )
 
 const readme = `Read traffic for linux network interfaces and warn on thresholds
@@ -46,13 +47,17 @@ func main() {
 	includeInterfaces := plugin.FlagSet.StringP("incldRgxIntrfc", "i", ".*", "Regex to select interfaces (Default: all)")
 	excludeInterfaces := plugin.FlagSet.StringP("excldRgxIntrfc", "e", "", "Regex to ignore interfaces (Default: nothing)")
 	checkOfflineDevices := plugin.FlagSet.BoolP("checkOffline", "c", false, "Check whether interfaces are online")
+	measuringTime := plugin.FlagSet.IntP("measuringTime", "m", 0, "Measure for n seconds the traffic and report the amount")
 
 	// Parse arguments
 	plugin.ParseArguments()
 
+	// Create result struct
+	var overall result.Overall
+
 	// Do the real work
 	// Get interfaces
-	ifaces, err := linux_net.getInterfacesForCheck(configIface, includeInterfaces, excludeInterfaces)
+	ifaces, err := getInterfacesForCheck(configIface, includeInterfaces, excludeInterfaces)
 	if err != nil {
 		check.ExitError(err)
 	}
@@ -61,51 +66,92 @@ func main() {
 		check.Exit(3, "No devices match the expression")
 	}
 
-	interfaceData := make ([]linux_net.ifaceData, len(ifaces))
-	var result string
+	interfaceData := make ([]ifaceData, len(ifaces))
 
 	var numberOfOfflineDevices = 0
 
-	numberOfMetrics := len(linux_net.getIfaceStatNames())
+	//numberOfMetrics := len(getIfaceStatNames())
 
+	// Get data
 	for idx, iface := range ifaces {
 		interfaceData[idx].name = iface
 
 		// get state
-		operState := linux_net.getInterfaceState(&iface)
-		operState = operState[:len(operState)-1]
-
-		if strings.Compare(operState, "down") == 0 {
-			numberOfOfflineDevices ++
-		}
-
-		// get numbers
-		statistics, err := linux_net.getInfacesStatistics(&iface)
+		err := getInterfaceState(&interfaceData[idx])
 		if err != nil {
 			check.ExitError(err)
 		}
+	}
 
-		result += interfaceData[idx].name + " is " + operState + ". "
+	firstDataPoint := make ([]statistics, len(ifaces))
+	if *measuringTime != 0 {
+		for idx  := range ifaces {
 
-		counter := 1
-		for key, value := range statistics {
-			result += key + ":" + strconv.Itoa(value)
-			if counter != numberOfMetrics {
-				result += " "
+			// get numbers
+			err = getInfacesStatistics(&interfaceData[idx], &firstDataPoint[idx])
+			if err != nil {
+				check.ExitError(err)
 			}
-			counter ++
-		}
-		if idx == (len(ifaces) - 1) {
-			result += "\n"
-		} else {
-			result += ",\n"
 		}
 
+		time.Sleep(time.Duration(*measuringTime) * time.Second)
 	}
 
-	if (numberOfOfflineDevices > 0 && *checkOfflineDevices) {
-		result = strconv.Itoa(numberOfOfflineDevices) + " devices are down\n" + result
-		check.Exit(2, result)
+	for idx := range ifaces {
+
+		// get numbers
+		err = getInfacesStatistics(&interfaceData[idx], nil)
+		if err != nil {
+			check.ExitError(err)
+		}
 	}
-	check.Exit(0, result)
+
+	if (*checkOfflineDevices) {
+		var onlineResult string
+		for idx := range ifaces {
+			if *checkOfflineDevices {
+				if interfaceData[idx].operstate == Down {
+					numberOfOfflineDevices ++
+				}
+
+				switch interfaceData[idx].operstate {
+					case Down: {
+						onlineResult += interfaceData[idx].name + " is down. "
+					}
+					case Up: {
+						onlineResult += interfaceData[idx].name + " is up. "
+					}
+					case Testing: {
+						onlineResult += interfaceData[idx].name + " is testing. "
+					}
+					default: {
+						onlineResult += interfaceData[idx].name + " is unknown. "
+					}
+				}
+
+			}
+		}
+		onlineResult = strconv.Itoa(numberOfOfflineDevices) + " devices are down\n" + onlineResult
+		overall.Add(check.Critical, onlineResult)
+	}
+
+	// Formulate result with numbers
+	metrics := getIfaceStatNames()
+	var metricOutput string
+	for idx, iface := range interfaceData{
+		metricOutput += iface.name  + ": "
+		for jdx, metric := range metrics{
+			metricOutput += metric + " "
+
+			if *measuringTime != 0 {
+				diff := iface.metrics[jdx] - firstDataPoint[idx][jdx]
+				metricOutput += "Diff: " + strconv.FormatUint(diff, 10) + ", "
+			}
+
+			metricOutput += "Total: " + strconv.FormatUint(interfaceData[idx].metrics[jdx], 10) + "; "
+		}
+	}
+	overall.Add(check.OK, metricOutput)
+
+	check.Exit(overall.GetStatus(), overall.GetSummary() + overall.GetOutput())
 }
