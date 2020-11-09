@@ -1,4 +1,4 @@
-module check_netdev_linux
+module github.com/NETWAYS/check_netdev_linux
 
 go 1.15
 
