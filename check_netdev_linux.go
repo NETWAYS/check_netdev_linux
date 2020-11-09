@@ -35,7 +35,7 @@ func main() {
 	includeInterfaces := plugin.FlagSet.StringP("incldRgxIntrfc", "i", ".*", "Regex to select interfaces (Default: all)")
 	excludeInterfaces := plugin.FlagSet.StringP("excldRgxIntrfc", "e", "", "Regex to ignore interfaces (Default: nothing)")
 	checkOfflineDevices := plugin.FlagSet.BoolP("checkOffline", "c", false, "Check whether interfaces are online")
-	measuringTime := plugin.FlagSet.IntP("measuringTime", "m", 0, "Measure for n seconds the traffic and report the amount")
+	measuringTime := plugin.FlagSet.Uint64P("measuringTime", "m", 0, "Measure for n seconds the traffic and report the amount")
 
 	// Parse arguments
 	plugin.ParseArguments()
@@ -132,14 +132,42 @@ func main() {
 			metricOutput += metric + " "
 
 			if *measuringTime != 0 {
-				diff := iface.metrics[jdx] - firstDataPoint[idx][jdx]
+				diff := (iface.metrics[jdx] - firstDataPoint[idx][jdx]) / *measuringTime
 				metricOutput += "Diff: " + strconv.FormatUint(diff, 10) + ", "
 			}
 
 			metricOutput += "Total: " + strconv.FormatUint(interfaceData[idx].metrics[jdx], 10) + "; "
 		}
 	}
+
+	metricOutput += "|"
+
+	var label string
+	var value string
+	var uom string
+
+	for idx, iface := range interfaceData{
+		label = iface.name
+		for jdx, metric := range metrics{
+
+			if *measuringTime != 0 {
+				diff := (iface.metrics[jdx] - firstDataPoint[idx][jdx]) / *measuringTime
+				value = strconv.FormatUint(diff, 10)
+				uom = "B"
+
+				perfdata := label + "-" + metric + "-throughput=" + value + uom + ";;;; "
+				metricOutput += perfdata
+			}
+
+
+			value = strconv.FormatUint(interfaceData[idx].metrics[jdx], 10)
+			uom = "c"
+			metricOutput += label + "-" + metric + "-total=" + value + uom + ";;;; "
+		}
+	}
+
+	// Perfdata
 	overall.Add(check.OK, metricOutput)
 
-	check.Exit(overall.GetStatus(), overall.GetSummary() + overall.GetOutput())
+	check.Exit(overall.GetStatus(), overall.GetOutput())
 }
