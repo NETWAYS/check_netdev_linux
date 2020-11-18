@@ -3,12 +3,16 @@ package main
 import (
 	"regexp"
 	"strconv"
+
 	//"strings"
 	//"fmt"
 	"time"
 
-	"github.com/NETWAYS/go-check"
-	"github.com/NETWAYS/go-check/result"
+	"go-check"
+	"go-check/perfdata"
+	"go-check/result"
+	//"github.com/NETWAYS/go-check"
+	//"github.com/NETWAYS/go-check/result"
 )
 
 const readme = `Read traffic for linux network interfaces and warn on thresholds
@@ -140,29 +144,26 @@ func main() {
 		}
 	}
 
-	metricOutput += "|"
-
-	var label string
-	var value string
-	var uom string
+	// Perfdata
 
 	for idx, iface := range interfaceData{
-		label = iface.name
 		for jdx, metric := range metrics{
 
 			if *measuringTime != 0 {
+				perfdata := new(perfdata.NagiosPerfdataUint)
 				diff := (iface.metrics[jdx] - firstDataPoint[idx][jdx]) / *measuringTime
-				value = strconv.FormatUint(diff, 10)
-				uom = "B"
-
-				perfdata := label + "-" + metric + "-throughput=" + value + uom + ";;;; "
-				metricOutput += perfdata
+				perfdata.Value = diff
+				perfdata.Uom = "B"
+				perfdata.Label = iface.name + "-" + metric + "-throughput"
+				overall.AddNagiosPerfdataUint(*perfdata)
 			}
 
 
-			value = strconv.FormatUint(interfaceData[idx].metrics[jdx], 10)
-			uom = "c"
-			metricOutput += label + "-" + metric + "-total=" + value + uom + ";;;; "
+			perfdata := new(perfdata.NagiosPerfdataUint)
+			perfdata.Label = iface.name + "-" + metric + "-total"
+			perfdata.Value = interfaceData[idx].metrics[jdx]
+			perfdata.Uom = "c"
+			overall.AddNagiosPerfdataUint(*perfdata)
 		}
 	}
 
