@@ -8,11 +8,9 @@ import (
 	//"fmt"
 	"time"
 
-	"go-check"
-	"go-check/perfdata"
-	"go-check/result"
-	//"github.com/NETWAYS/go-check"
-	//"github.com/NETWAYS/go-check/result"
+	"github.com/NETWAYS/go-check"
+	"github.com/NETWAYS/go-check/result"
+	"github.com/NETWAYS/go-check/perfdata"
 )
 
 const readme = `Read traffic for linux network interfaces and warn on thresholds
@@ -145,25 +143,26 @@ func main() {
 	}
 
 	// Perfdata
+	pl := new(perfdata.PerfdataList)
 
 	for idx, iface := range interfaceData{
 		for jdx, metric := range metrics{
 
 			if *measuringTime != 0 {
-				perfdata := new(perfdata.NagiosPerfdataUint)
+				perfdata := new(perfdata.Perfdata)
 				diff := (iface.metrics[jdx] - firstDataPoint[idx][jdx]) / *measuringTime
 				perfdata.Value = diff
 				perfdata.Uom = "B"
 				perfdata.Label = iface.name + "-" + metric + "-throughput"
-				overall.AddNagiosPerfdataUint(*perfdata)
+				pl.Add(perfdata)
 			}
 
 
-			perfdata := new(perfdata.NagiosPerfdataUint)
+			perfdata := new(perfdata.Perfdata)
 			perfdata.Label = iface.name + "-" + metric + "-total"
 			perfdata.Value = interfaceData[idx].metrics[jdx]
 			perfdata.Uom = "c"
-			overall.AddNagiosPerfdataUint(*perfdata)
+			pl.Add(perfdata)
 		}
 	}
 
