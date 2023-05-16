@@ -1,3 +1,5 @@
+**Warning:** This is a prototype and not finished and not very well tested.
+
 check_netdev_linux
 ==================
 
