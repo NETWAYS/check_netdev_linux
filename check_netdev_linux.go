@@ -1,7 +1,6 @@
 package main
 
 import (
-	"regexp"
 	"strconv"
 
 	//"strings"
@@ -17,10 +16,6 @@ const readme = `Read traffic for linux network interfaces and warn on thresholds
 Normal mode: Detects all network interfaces and checks the link state
 Measuring mode: Re-reads the counters after $MeasuringTime seconds to measure
 the network traffic.`
-
-var (
-	separator = regexp.MustCompile(`\s+`)
-)
 
 func main() {
 	defer check.CatchPanic()
