@@ -1,7 +1,6 @@
 package main
 
 import (
-	"regexp"
 	"strconv"
 
 	//"strings"
@@ -9,19 +8,14 @@ import (
 	"time"
 
 	"github.com/NETWAYS/go-check"
-	"github.com/NETWAYS/go-check/result"
 	"github.com/NETWAYS/go-check/perfdata"
+	"github.com/NETWAYS/go-check/result"
 )
 
 const readme = `Read traffic for linux network interfaces and warn on thresholds
 Normal mode: Detects all network interfaces and checks the link state
 Measuring mode: Re-reads the counters after $MeasuringTime seconds to measure
 the network traffic.`
-
-var (
-	separator = regexp.MustCompile(`\s+`)
-)
-
 
 func main() {
 	defer check.CatchPanic()
@@ -31,7 +25,6 @@ func main() {
 	plugin.Readme = readme
 	plugin.Version = "0.1"
 	plugin.Timeout = 30
-
 
 	configIface := plugin.FlagSet.StringP("interface", "I", "", "Single Interface to check (exclusive to incldRgxIntrfc and excldRgxIntrfc)")
 	includeInterfaces := plugin.FlagSet.StringP("incldRgxIntrfc", "i", ".*", "Regex to select interfaces (Default: all)")
@@ -53,10 +46,10 @@ func main() {
 	}
 
 	if len(ifaces) == 0 {
-		check.Exit(3, "No devices match the expression")
+		check.ExitRaw(3, "No devices match the expression")
 	}
 
-	interfaceData := make ([]ifaceData, len(ifaces))
+	interfaceData := make([]ifaceData, len(ifaces))
 
 	var numberOfOfflineDevices = 0
 
@@ -73,9 +66,9 @@ func main() {
 		}
 	}
 
-	firstDataPoint := make ([]statistics, len(ifaces))
+	firstDataPoint := make([]statistics, len(ifaces))
 	if *measuringTime != 0 {
-		for idx  := range ifaces {
+		for idx := range ifaces {
 
 			// get numbers
 			err = getInfacesStatistics(&interfaceData[idx], &firstDataPoint[idx])
@@ -96,25 +89,29 @@ func main() {
 		}
 	}
 
-	if (*checkOfflineDevices) {
+	if *checkOfflineDevices {
 		var onlineResult string
 		for idx := range ifaces {
 			if *checkOfflineDevices {
 				if interfaceData[idx].operstate == Down {
-					numberOfOfflineDevices ++
+					numberOfOfflineDevices++
 				}
 
 				switch interfaceData[idx].operstate {
-					case Down: {
+				case Down:
+					{
 						onlineResult += interfaceData[idx].name + " is down. "
 					}
-					case Up: {
+				case Up:
+					{
 						onlineResult += interfaceData[idx].name + " is up. "
 					}
-					case Testing: {
+				case Testing:
+					{
 						onlineResult += interfaceData[idx].name + " is testing. "
 					}
-					default: {
+				default:
+					{
 						onlineResult += interfaceData[idx].name + " is unknown. "
 					}
 				}
@@ -128,9 +125,9 @@ func main() {
 	// Formulate result with numbers
 	metrics := getIfaceStatNames()
 	var metricOutput string
-	for idx, iface := range interfaceData{
-		metricOutput += iface.name  + ": "
-		for jdx, metric := range metrics{
+	for idx, iface := range interfaceData {
+		metricOutput += iface.name + ": "
+		for jdx, metric := range metrics {
 			metricOutput += metric + " "
 
 			if *measuringTime != 0 {
@@ -145,8 +142,8 @@ func main() {
 	// Perfdata
 	pl := new(perfdata.PerfdataList)
 
-	for idx, iface := range interfaceData{
-		for jdx, metric := range metrics{
+	for idx, iface := range interfaceData {
+		for jdx, metric := range metrics {
 
 			if *measuringTime != 0 {
 				perfdata := new(perfdata.Perfdata)
@@ -156,7 +153,6 @@ func main() {
 				perfdata.Label = iface.name + "-" + metric + "-throughput"
 				pl.Add(perfdata)
 			}
-
 
 			perfdata := new(perfdata.Perfdata)
 			perfdata.Label = iface.name + "-" + metric + "-total"
@@ -169,5 +165,5 @@ func main() {
 	// Perfdata
 	overall.Add(check.OK, metricOutput)
 
-	check.Exit(overall.GetStatus(), overall.GetOutput())
+	check.ExitRaw(overall.GetStatus(), overall.GetOutput())
 }
